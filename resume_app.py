@@ -1,13 +1,13 @@
 import streamlit as st
 import os
-from langchain_community.document_loaders import PyPDFLoader
+from pypdf import PdfReader
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_classic.chains import create_retrieval_chain
-from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
-import tempfile
 
 st.set_page_config(page_title="AI Resume Screening Assistant", layout="wide")
 
@@ -35,16 +35,15 @@ if st.button("Evaluate Resumes"):
         with st.spinner("Processing resumes and evaluating against JD..."):
             all_docs = []
             for uploaded_file in uploaded_files:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                    tmp_file.write(uploaded_file.getvalue())
-                    tmp_path = tmp_file.name
-
-                loader = PyPDFLoader(tmp_path)
-                docs = loader.load()
-                for doc in docs:
-                    doc.metadata["source_file"] = uploaded_file.name
-                all_docs.extend(docs)
-                os.unlink(tmp_path)
+                reader = PdfReader(uploaded_file)
+                for page_num, page in enumerate(reader.pages):
+                    text = page.extract_text()
+                    if text:
+                        doc = Document(
+                            page_content=text,
+                            metadata={"source_file": uploaded_file.name, "page": page_num + 1}
+                        )
+                        all_docs.append(doc)
 
             # Text Splitting
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
@@ -68,7 +67,7 @@ if st.button("Evaluate Resumes"):
                 "4. **Missing Skills**\n"
                 "5. **Candidate Summary**\n"
                 "6. **Strengths & Weaknesses**\n"
-                "7. **Hiring Recommendation (Auto Approve / Reject / Human Review) with Justification**\n\n"
+                "7. **Hiring Recommendation with Justification**\n\n"
                 "Context:\n{context}"
             )
 

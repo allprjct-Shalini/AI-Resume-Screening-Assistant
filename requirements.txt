@@ -1,6 +1,8 @@
 streamlit
 langchain
 langchain-openai
+langchain-classic
+langchain-text-splitters
 langgraph
 faiss-cpu
 pypdf

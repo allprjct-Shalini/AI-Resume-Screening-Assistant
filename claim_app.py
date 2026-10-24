@@ -1,7 +1,5 @@
-%%writefile claim_app.py
 import streamlit as st
-import operator
-from typing import TypedDict, Annotated, List
+from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 
 st.set_page_config(page_title="Insurance Claim Processing Agent", layout="wide")
@@ -22,49 +20,47 @@ class ClaimState(TypedDict):
     decision: str
 
 # Node 1: Document Verification Agent
-def verify_documents(state: ClaimState) -> ClaimState:
+def verify_documents(state: ClaimState):
     required_docs = {"id_proof", "medical_bill", "incident_report"}
     submitted = set(state["documents_submitted"])
-    state["doc_verified"] = required_docs.issubset(submitted)
-    return state
+    return {"doc_verified": required_docs.issubset(submitted)}
 
 # Node 2: Eligibility Check Agent
-def check_eligibility(state: ClaimState) -> ClaimState:
-    state["eligibility_valid"] = (state["policy_status"].lower() == "active")
-    return state
+def check_eligibility(state: ClaimState):
+    return {"eligibility_valid": state["policy_status"].lower() == "active"}
 
 # Node 3: Fraud Detection Agent
-def detect_fraud(state: ClaimState) -> ClaimState:
+def detect_fraud(state: ClaimState):
     # Simple rule: Claims over $10,000 flagged as potential fraud risk
     if state["claim_amount"] > 10000:
-        state["fraud_score"] = 0.85  # High risk
+        fraud_score = 0.85  # High risk
     else:
-        state["fraud_score"] = 0.10  # Low risk
-    return state
+        fraud_score = 0.10  # Low risk
+    return {"fraud_score": fraud_score}
 
 # Node 4: Claim Summary Agent
-def generate_summary(state: ClaimState) -> ClaimState:
+def generate_summary(state: ClaimState):
     doc_status = "Valid" if state["doc_verified"] else "Invalid/Missing Documents"
     elig_status = "Eligible" if state["eligibility_valid"] else "Ineligible/Expired Policy"
     risk_level = "High Risk" if state["fraud_score"] > 0.5 else "Low Risk"
-    
-    state["summary"] = (
+
+    summary = (
         f"Claim ID: {state['claim_id']} | Amount: ${state['claim_amount']} | "
         f"Documents: {doc_status} | Policy: {elig_status} | Fraud Risk: {risk_level}"
     )
-    return state
+    return {"summary": summary}
 
 # Node 5: Decision / Routing Logic
-def make_decision(state: ClaimState) -> ClaimState:
+def make_decision(state: ClaimState):
     if not state["doc_verified"]:
-        state["decision"] = "Reject (Missing Documents)"
+        decision = "Reject (Missing Documents)"
     elif not state["eligibility_valid"]:
-        state["decision"] = "Reject (Expired Policy)"
+        decision = "Reject (Expired Policy)"
     elif state["fraud_score"] > 0.5 or state["claim_amount"] > 10000:
-        state["decision"] = "Escalate for Human Review (High-Value / High Risk)"
+        decision = "Escalate for Human Review (High-Value / High Risk)"
     else:
-        state["decision"] = "Auto Approve"
-    return state
+        decision = "Auto Approve"
+    return {"decision": decision}
 
 # Build LangGraph Workflow
 workflow = StateGraph(ClaimState)
@@ -79,7 +75,8 @@ workflow.add_node("make_decision", make_decision)
 workflow.set_entry_point("verify_documents")
 
 # Parallel execution: documents, eligibility, and fraud run independently
-workflow.add_edge("verify_documents", "generate_summary")
+workflow.add_edge("verify_documents", "check_eligibility")
+workflow.add_edge("verify_documents", "detect_fraud")
 workflow.add_edge("check_eligibility", "generate_summary")
 workflow.add_edge("detect_fraud", "generate_summary")
 
